@@ -6,8 +6,8 @@ This project implements an end-to-end pipeline for anomaly classification in che
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/xray-anomaly-classifier.git
-cd xray-anomaly-classifier
+git clone https://github.com/yourusername/xray_anomaly.git
+cd xray_anomaly
 ```
 
 ### 2. Set up the environment
@@ -23,6 +23,9 @@ data/xray_images/images_001/
 data/xray_images/images_002/
 ...
 ```
+
+(Within `notebooks/eda.ipynb`, there is a script to use
+kagglehub to download locally)
 
 Also make sure the metadata CSVs are in:
 ```
@@ -88,7 +91,7 @@ outputs/
 
 To launch a local web demo:
 ```bash
-streamlit run streamlit_app/app.py
+streamlit run app/app.py
 ```
 
 ---
