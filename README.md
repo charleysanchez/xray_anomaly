@@ -49,6 +49,21 @@ This will generate:
 - `train.txt`
 - `val.txt`
 
+### 5. Onehot encode the patient data
+
+Ensure `Data_entry_2017.csv` is located at:
+```
+data/xray_images/Data_entry_2017.csv
+```
+
+Then run the preprocess metadata script:
+```bash
+python scripts/preprocess_metadata.py
+```
+
+This will generate:
+- `preprocessed_metadata.csv`
+
 ---
 
 ## 🧠 Model Training

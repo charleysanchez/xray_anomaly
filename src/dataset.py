@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 
 
 class ChestXrayDataset(Dataset):
-    def __init__(self, split_file, image_root_dir, bbox_csv, patient_csv, transform=None, target_size=(512, 512)):
+    def __init__(self, split_file, image_root_dir, bbox_csv, patient_csv, transform=None, target_size=(224, 224)):
 
         # get all image names from train/val list or test list
         with open(split_file, 'r') as f:
