@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 
 
 class ChestXrayDataset(Dataset):
-    def __init__(self, split_file, image_root_dir, bbox_csv, patient_csv, transform=None, target_size=(224, 224)):
+    def __init__(self, split_file, image_root_dir, bbox_csv, metadata_csv, transform=None, target_size=(224, 224)):
 
         # get all image names from train/val list or test list
         with open(split_file, 'r') as f:
@@ -22,7 +22,18 @@ class ChestXrayDataset(Dataset):
 
         # load CSVs
         self.bbox_df = pd.read_csv(bbox_csv)
-        self.patient_df = pd.read_csv(patient_csv)
+        self.meta_df = pd.read_csv(metadata_csv)
+
+        # include only images in the split
+        self.meta_df = self.meta_df[self.meta_df['Image Index'].isin(self.image_names)].copy()
+
+        # identify label columns
+        self.label_columns = sorted([
+            col for col in self.meta_df.columns
+            if col not in ['Image Index', 'Finding Labels', 'Follow-up #', 'Patient ID',
+                           'Patient Age', 'Patient Gender', 'View Position',
+                           'OriginalImage[Width', 'Height]', 'OriginalImagePixelSpacing[x', 'y]']
+        ])
 
         # build {filename: path}
         self.filepath_dict = self._build_index()
@@ -35,8 +46,8 @@ class ChestXrayDataset(Dataset):
 
         # build {filename: diseases}
         self.label_dict = {
-            row['Image Index']: row['Finding Labels']
-            for _, row in self.patient_df.iterrows()
+            row['Image Index']: row[self.label_columns].values.astype('float32')
+            for _, row in self.meta_df.iterrows()
         }
 
 
@@ -60,11 +71,11 @@ class ChestXrayDataset(Dataset):
         image = self.transform(Image)
 
         bbox = self.bbox_dict.get(filename, None) # list of [Disease, [x, y, w, h]]
-        label = self.label_dict.get(filename, "Unknown") # string like 'Atelectasis' or 'No Finding'
+        labels = self.label_dict.get(filename)
 
         return {
             'image': image,
-            'label': label,
+            'labels': labels,
             'bbox': bbox,
             'image_name': filename
         }
