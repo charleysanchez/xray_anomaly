@@ -16,7 +16,7 @@ def train_test_val_splits():
     )
 
     test = ChestXrayDataset(
-        split_file='data/xray_images/test.txt',
+        split_file='data/xray_images/test_list.txt',
         image_root_dir='data/xray_images/',
         bbox_csv='data/xray_images/BBox_List_2017.csv',
         patient_csv='data/xray_images/Data_Entry_2017.csv'
