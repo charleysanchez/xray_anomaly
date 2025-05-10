@@ -5,6 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import torch
+import numpy as np
 
 
 class ChestXrayDataset(Dataset):
@@ -80,7 +81,8 @@ class ChestXrayDataset(Dataset):
         labels = self.label_dict.get(filename)
         if labels is None:
             labels = torch.zeros(len(self.label_columns), dtype=torch.float32)
-        labels = torch.tensor(labels)
+        elif isinstance(labels, np.ndarray):
+            labels = torch.from_numpy(labels)
 
         bbox = self.bbox_dict.get(filename, None)
         if bbox is None:

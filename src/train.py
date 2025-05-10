@@ -13,7 +13,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
-    model = models.resnet50(pretrained=True)
+    model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
     model.fc = nn.Sequential(
         nn.Linear(model.fc.in_features, len(label_columns)),
         nn.Sigmoid()
