@@ -29,7 +29,7 @@ class ChestXrayDataset(Dataset):
 
         # build {filename: [disease, [x, y, w, h]]}
         self.bbox_dict = {
-            row['Image Index']: [row['Finding Label'], [row['Bbox [x'], row['y'], row['w'], row['h']]]
+            row['Image Index']: [row['Finding Label'], [row['Bbox [x'], row['y'], row['w'], row['h]']]]
             for _, row in self.bbox_df.iterrows()
         }
 
