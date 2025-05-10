@@ -64,7 +64,7 @@ class ChestXrayDataset(Dataset):
     def __len__(self):
         return len(self.image_names)
     
-    def __get_item__(self, idx):
+    def __getitem__(self, idx):
         filename = self.image_names[idx]
         image_path = self.filepath_dict[filename]
         image = Image.open(image_path).convert('RGB')
