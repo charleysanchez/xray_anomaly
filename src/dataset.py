@@ -4,6 +4,7 @@ import os
 from PIL import Image
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
+import torch
 
 
 class ChestXrayDataset(Dataset):
@@ -42,7 +43,8 @@ class ChestXrayDataset(Dataset):
             col for col in self.meta_df.columns
             if col not in ['Image Index', 'Finding Labels', 'Follow-up #', 'Patient ID',
                            'Patient Age', 'Patient Gender', 'View Position',
-                           'OriginalImage[Width', 'Height]', 'OriginalImagePixelSpacing[x', 'y]']
+                           'OriginalImage[Width', 'Height]', 'OriginalImagePixelSpacing[x', 'y]',
+                           'Unnamed: 11']
         ])
 
         # build {filename: [disease, [x, y, w, h]]}
@@ -74,8 +76,15 @@ class ChestXrayDataset(Dataset):
         image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
 
-        bbox = self.bbox_dict.get(filename, None) # list of [Disease, [x, y, w, h]]
+        # Default values if missing
         labels = self.label_dict.get(filename)
+        if labels is None:
+            labels = torch.zeros(len(self.label_columns), dtype=torch.float32)
+        labels = torch.tensor(labels)
+
+        bbox = self.bbox_dict.get(filename, None)
+        if bbox is None:
+            bbox = torch.tensor([0.0, 0.0, 0.0, 0.0], dtype=torch.float32)
 
         return {
             'image': image,
