@@ -12,7 +12,17 @@ class ChestXrayDataset(Dataset):
         # get all image names from train/val list or test list
         with open(split_file, 'r') as f:
             self.image_names = [line.strip() for line in f]
+
         self.image_root_dir = image_root_dir
+
+        self.filepath_dict = self._build_index()
+
+        # ✅ Filter only image_names that are actually available on disk
+        valid_image_names = [name for name in self.image_names if name in self.filepath_dict]
+        if len(valid_image_names) < len(self.image_names):
+            missing = set(self.image_names) - set(valid_image_names)
+            print(f"⚠️ Skipping {len(missing)} missing images from {split_file}")
+        self.image_names = valid_image_names
 
         # default transforms
         self.transform = transform or transforms.Compose([
@@ -35,9 +45,6 @@ class ChestXrayDataset(Dataset):
                            'OriginalImage[Width', 'Height]', 'OriginalImagePixelSpacing[x', 'y]']
         ])
 
-        # build {filename: path}
-        self.filepath_dict = self._build_index()
-
         # build {filename: [disease, [x, y, w, h]]}
         self.bbox_dict = {
             row['Image Index']: [row['Finding Label'], [row['Bbox [x'], row['y'], row['w'], row['h]']]]
@@ -53,12 +60,9 @@ class ChestXrayDataset(Dataset):
 
     def _build_index(self):
         index = {}
-        for subfolder in os.listdir(self.image_root_dir):
-            full_subfolder = os.path.join(self.image_root_dir, subfolder)
-            if os.path.isdir(full_subfolder):
-                for path in glob(os.path.join(full_subfolder, '*.png')):
-                    filename = os.path.basename(path)
-                    index[filename] = path
+        for path in glob(os.path.join(self.image_root_dir, '**/*.png'), recursive=True):
+            filename = os.path.basename(path)
+            index[filename] = path
         return index
     
     def __len__(self):
@@ -68,7 +72,7 @@ class ChestXrayDataset(Dataset):
         filename = self.image_names[idx]
         image_path = self.filepath_dict[filename]
         image = Image.open(image_path).convert('RGB')
-        image = self.transform(Image)
+        image = self.transform(image)
 
         bbox = self.bbox_dict.get(filename, None) # list of [Disease, [x, y, w, h]]
         labels = self.label_dict.get(filename)
