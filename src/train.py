@@ -6,6 +6,7 @@ from evaluate import evaluate_model
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 from dataset import ChestXrayDataset
+from model import ClassBalancedBCELoss, compute_class_counts, get_class_balanced_weights
 from tqdm import tqdm
 from utils import train_test_val_splits
 
@@ -29,7 +30,10 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     )
     model = model.to(device)
 
-    criterion = nn.BCELoss()
+    class_counts = compute_class_counts(train_dataset)
+    class_weights = get_class_balanced_weights(class_counts)
+
+    criterion = ClassBalancedBCELoss(class_weights=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     for epoch in range(num_epochs):

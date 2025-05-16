@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-import tqdm
+from tqdm import tqdm
 from sklearn.metrics import f1_score, roc_auc_score
 
 def evaluate_model(model, dataloader, criterion, device, label_columns):
@@ -11,7 +11,7 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
     all_labels = []
 
     with torch.no_grad():
-        for batch in dataloader:
+        for batch in tqdm(dataloader, desc='Evaluating'):
             images = batch['image'].to(device)
             labels = batch['labels'].to(device)
 
