@@ -11,7 +11,7 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
     all_labels = []
 
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc='Evaluating'):
+        for batch in dataloader:
             images = batch['image'].to(device)
             labels = batch['labels'].to(device)
 
