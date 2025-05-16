@@ -10,6 +10,13 @@ from tqdm import tqdm
 from utils import train_test_val_splits
 
 def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_size=32, lr=1e-4):
+    wandb.init(project='xray', config={
+        "epochs": num_epochs,
+        "batch_size": batch_size,
+        "learning_rate": lr,
+        "labels": label_columns
+    })
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -45,27 +52,17 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
         avg_loss = running_loss / len(train_loader)
 
         model.eval()
-        eval_loss = 0.0
-        num_batches = 0
-
-        with torch.no_grad():
-            for batch in tqdm(val_loader, desc='Evaluating'):
-                eval_images = batch['image'].to(device)
-                eval_labels = batch['labels'].to(device)
-
-                outputs = model(eval_images)
-                eval_loss += criterion(outputs, eval_labels).item()
-                num_batches += 1
         
-        eval_loss = eval_loss / num_batches
+        metrics = evaluate_model(model, val_loader, criterion, device, label_columns)
 
             
-        print(f"Epoch {epoch+1} | Train loss: {avg_loss:.4f} | Eval loss: {eval_loss:.4f}")
+        print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {metrics['val_loss']:.4f} | Mean AUROC: {metrics['mean_auroc']:.4f}")
 
         wandb.log(
             {
+                "epoch": epoch+1,
                 "Train Loss": avg_loss,
-                "Eval Loss": eval_loss
+                **metrics
             }
         )
 
@@ -74,8 +71,8 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "train_loss": avg_loss,
-                "eval_loss": eval_loss,
-                "epoch": epoch+1
+                "epoch": epoch+1,
+                **metrics
             },
             f"models/resnet50_epoch_{epoch+1}.pt"
         )
@@ -84,7 +81,6 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
 
 if __name__ == '__main__':
-    wandb.init(project='xray')
     dataset = train_test_val_splits()
     train_dataset = dataset['train']
     val_dataset = dataset['val']
