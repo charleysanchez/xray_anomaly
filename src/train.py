@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+from evaluate import evaluate_model
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 from dataset import ChestXrayDataset

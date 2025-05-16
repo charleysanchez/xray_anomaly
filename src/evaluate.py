@@ -1,47 +1,55 @@
 import os
 import torch
+import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score
 
-def validate_model(model, val_loader, criterion, device, label_columns):
+def evaluate_model(model, dataloader, criterion, device, label_columns):
     model.eval()
     val_loss = 0.0
-    all_preds = []
-    all_targets = []
+    all_outputs = []
+    all_labels = []
 
     with torch.no_grad():
-        for batch in val_loader:
-            images = batch['images'].to(device)
-            targets = batch['labels'].to(device)
+        for batch in dataloader:
+            images = batch['image'].to(device)
+            labels = batch['labels'].to(device)
 
             outputs = model(images)
-            loss = criterion(outputs, targets)
-            val_loss += loss.item()
+            val_loss += criterion(outputs, labels).item()
 
-            all_preds.append(outputs.cpu())
-            all_targets.append(targets.cpu())
+            all_outputs.append(torch.sigmoid(outputs).cpu())
+            all_labels.append(labels.cpu())
 
-    all_preds = torch.cat(all_preds)
-    all_targets = torch.cat(all_targets)
+    y_pred = torch.cat(all_outputs).numpy()
+    y_true = torch.cat(all_labels).numpy()
 
-    y_pred = all_preds.numpy()
-    y_true = all_targets.numpy()
-
-    aurocs = []
-    f1s = []
+    per_class_aurocs = []
+    per_class_f1s = []
 
     for i in range(len(label_columns)):
         try:
             auroc = roc_auc_score(y_true[:, i], y_pred[:, i])
         except ValueError:
             auroc = float('nan')
-        aurocs.append(auroc)
+        per_class_aurocs.append(auroc)
 
         preds_bin = (y_pred[:, i] >= 0.5).astype(int)
         f1 = f1_score(y_true[:, i], preds_bin, zero_division=0)
-        f1s.append(f1)
+        per_class_f1s.append(f1)
 
-    avg_val_loss = val_loss / len(val_loader)
-    return avg_val_loss, aurocs, f1s
+    metrics = {
+        "val_loss": val_loss / len(dataloader),
+        "mean_auroc": sum([x for x in per_class_aurocs if not np.isnan(x)]) / len(label_columns),
+        "mean_f1": sum(per_class_f1s) / len(label_columns),
+    }
+
+    # Also include per-class breakdowns in metrics
+    for label, auroc, f1 in zip(label_columns, per_class_aurocs, per_class_f1s):
+        metrics[f"AUROC_{label}"] = auroc
+        metrics[f"F1_{label}"] = f1
+
+    return metrics
+
     
 def save_best_model(model, optimizer, epoch, val_loss, best_val_loss, save_path='checkpoints/best_model.pt'):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
