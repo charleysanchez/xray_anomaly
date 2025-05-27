@@ -30,7 +30,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     )
     model = model.to(device)
 
-    class_weights = get_class_balanced_weights(train_loader)
+    class_weights = get_class_balanced_weights(train_loader).to(device)
 
     criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr)
