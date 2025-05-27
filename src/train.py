@@ -32,8 +32,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
     class_weights = get_class_balanced_weights(train_loader)
 
-    # criterion = ClassBalancedBCELoss(class_weights=class_weights)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     for epoch in range(num_epochs):
