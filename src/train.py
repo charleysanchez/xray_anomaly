@@ -26,7 +26,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
     model.fc = nn.Sequential(
         nn.Linear(model.fc.in_features, len(label_columns)),
-        nn.Sigmoid()
+        # nn.Sigmoid()
     )
     model = model.to(device)
 
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         label_columns=train_dataset.label_columns,
-        num_epochs=10,
+        num_epochs=100,
         batch_size=16,
         lr=1e-4
     )

@@ -1,8 +1,24 @@
-import os
 import torch
+import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import f1_score, roc_auc_score
+
+def find_optimal_thresholds(y_true, y_pred, label_columns):
+    thresholds = []
+    for i in range(y_true.shape[1]):
+        best_t, best_f1 = 0.5, 0.0
+        for t in np.linspace(0.1, 0.9, 50):
+            pred_bin = (y_pred[:, i] >= t).astype(int)
+            f1 = f1_score(y_true[:, i], pred_bin, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_t = t
+        thresholds.append(best_t)
+    print("✅ Optimal thresholds per class:")
+    for label, t in zip(label_columns, thresholds):
+        print(f"  {label}: {t:.2f}")
+    return thresholds
 
 def evaluate_model(model, dataloader, criterion, device, label_columns):
     model.eval()
@@ -24,6 +40,9 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
     y_pred = torch.cat(all_outputs).numpy()
     y_true = torch.cat(all_labels).numpy()
 
+    thresholds = find_optimal_thresholds(y_true, y_pred, label_columns)
+
+
     per_class_aurocs = []
     per_class_f1s = []
 
@@ -34,7 +53,7 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
             auroc = float('nan')
         per_class_aurocs.append(auroc)
 
-        preds_bin = (y_pred[:, i] >= 0.5).astype(int)
+        preds_bin = (y_pred[:, i] >= thresholds[i]).astype(int)
         f1 = f1_score(y_true[:, i], preds_bin, zero_division=0)
         per_class_f1s.append(f1)
 
@@ -49,6 +68,12 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
         metrics[f"AUROC_{label}"] = auroc
         metrics[f"F1_{label}"] = f1
 
+
+    print("\n📊 Summary:")
+    print("  Predicted positives per class:", (y_pred >= 0.5).sum(axis=0).astype(int))
+    print("  Mean AUROC: {:.4f}, Mean F1 (best threshold): {:.4f}".format(
+        metrics["mean_auroc"], metrics["mean_f1"]
+    ))
     return metrics
 
     
