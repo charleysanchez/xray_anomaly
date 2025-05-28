@@ -36,7 +36,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=2, verbose=True
+        optimizer, mode='min', factor=0.5, patience=2
     )
 
     for epoch in range(num_epochs):
@@ -112,7 +112,7 @@ if __name__ == '__main__':
             transforms.ToTensor(),
             # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
-    dataset = train_test_val_splits(train_transform=train_transform, val_transforms=val_transform)
+    dataset = train_test_val_splits(train_transform=train_transform, val_transform=val_transform)
     train_dataset = dataset['train']
     val_dataset = dataset['val']
     test_dataset = dataset['test']
