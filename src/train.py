@@ -91,7 +91,28 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
 
 if __name__ == '__main__':
-    dataset = train_test_val_splits()
+    train_transform = transforms.Compose([
+            # randomly crop to 224×224, but vary scale & aspect a bit
+            transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+            # random horizontal flip with p=0.5
+            transforms.RandomHorizontalFlip(),
+            # small rotations up to ±15°
+            transforms.RandomRotation(degrees=15),
+            # slight changes in brightness/contrast
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            # convert PIL→Tensor and normalize
+            transforms.ToTensor(),
+            # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+    
+    val_transform = transforms.Compose([
+            # make shorter edge = 256, then center‐crop 224
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+    dataset = train_test_val_splits(train_tranform=train_transform, val_transforms=val_transform)
     train_dataset = dataset['train']
     val_dataset = dataset['val']
     test_dataset = dataset['test']
