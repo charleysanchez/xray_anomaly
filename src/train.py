@@ -112,7 +112,7 @@ if __name__ == '__main__':
             transforms.ToTensor(),
             # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
-    dataset = train_test_val_splits(train_tranform=train_transform, val_transforms=val_transform)
+    dataset = train_test_val_splits(train_transform=train_transform, val_transforms=val_transform)
     train_dataset = dataset['train']
     val_dataset = dataset['val']
     test_dataset = dataset['test']
