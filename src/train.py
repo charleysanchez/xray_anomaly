@@ -25,7 +25,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
     model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
     model.fc = nn.Sequential(
-        nn.Dropout(p=0.3)
+        nn.Dropout(p=0.3),
         nn.Linear(model.fc.in_features, len(label_columns)),
         # nn.Sigmoid()
     )
@@ -35,6 +35,9 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
     criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=2, verbose=True
+    )
 
     for epoch in range(num_epochs):
         model.train()
@@ -80,6 +83,9 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
             },
             f"models/resnet50_epoch_{epoch+1}.pt"
         )
+
+        scheduler.step(metrics['val_loss'])
+
 
     return model
 
