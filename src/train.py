@@ -25,6 +25,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
     model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
     model.fc = nn.Sequential(
+        nn.Dropout(p=0.3)
         nn.Linear(model.fc.in_features, len(label_columns)),
         # nn.Sigmoid()
     )
