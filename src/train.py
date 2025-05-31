@@ -27,13 +27,11 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     model.fc = nn.Sequential(
         nn.Dropout(p=0.3),
         nn.Linear(model.fc.in_features, len(label_columns)),
-        # nn.Sigmoid()
+        nn.Sigmoid()
     )
     model = model.to(device)
 
-    class_weights = get_class_balanced_weights(train_loader).to(device)
-
-    criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
+    criterion = nn.BCELoss(size_average=True)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=2
@@ -81,7 +79,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
                 "epoch": epoch+1,
                 **metrics
             },
-            f"models/resnet50_epoch_{epoch+1}.pt"
+            f"models/resnet50_BCE_epoch_{epoch+1}.pt"
         )
 
         scheduler.step(metrics['val_loss'])
@@ -91,27 +89,33 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
 
 
 if __name__ == '__main__':
+
+    normalize = transforms.Normalize([0.485, 0.456, 0.406],
+                                     [0.229, 0.224, 0.225])
+        
     train_transform = transforms.Compose([
-            # randomly crop to 224×224, but vary scale & aspect a bit
-            transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
-            # random horizontal flip with p=0.5
-            transforms.RandomHorizontalFlip(),
-            # small rotations up to ±15°
-            transforms.RandomRotation(degrees=15),
-            # slight changes in brightness/contrast
-            transforms.ColorJitter(brightness=0.1, contrast=0.1),
-            # convert PIL→Tensor and normalize
-            transforms.ToTensor(),
-            # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ])
+        # random crop & scale like CheXNet
+        transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.75, 1.33)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=10, fill=0),
+        # radiograph “texture” augmentations
+        transforms.RandomEqualize(p=0.5),
+        transforms.RandomAutocontrast(p=0.5),
+        transforms.ToTensor(),
+        # if your X-rays are single-channel, repeat to 3 ch
+        transforms.Lambda(lambda x: x.repeat(3,1,1) if x.shape[0]==1 else x),
+        normalize
+    ])
+
     
     val_transform = transforms.Compose([
-            # make shorter edge = 256, then center‐crop 224
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ])
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3,1,1) if x.shape[0]==1 else x),
+        normalize,
+    ])
+
     dataset = train_test_val_splits(train_transform=train_transform, val_transform=val_transform)
     train_dataset = dataset['train']
     val_dataset = dataset['val']

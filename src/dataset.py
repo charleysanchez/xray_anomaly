@@ -48,6 +48,7 @@ class ChestXrayDataset(Dataset):
                            'Unnamed: 11']
         ])
 
+
         # build {filename: [disease, [x, y, w, h]]}
         self.bbox_dict = {
             row['Image Index']: [row['Finding Label'], [row['Bbox [x'], row['y'], row['w'], row['h]']]]

@@ -14,16 +14,14 @@ class GradCAM:
 
     def _register_hooks(self):
         def forward_hook(module, input, output):
-            # save activations of target conv layer
             self.activations = output.detach()
+        def backward_hook(module, grad_input, grad_output):
+            self.gradients = grad_output[0].detach()
 
-        def backward_hook(module, grad_in, grad_out):
-            # save activation gradients
-            self.gradients = grad_out[0].detach()
-
-        # register hooks
+        # register the NEW full backward hook
         self.hooks.append(self.target_layer.register_forward_hook(forward_hook))
         self.hooks.append(self.target_layer.register_full_backward_hook(backward_hook))
+
 
     def generate(self, input_tensor: torch.Tensor, class_idx: int = None) -> np.ndarray:
         """
@@ -54,6 +52,9 @@ class GradCAM:
         cam = cam - cam.min()
         if cam.max() != 0:
             cam = cam / cam.max()
+
+        return cam
+    
 
     def remove_hooks(self):
         for h in self.hooks:
