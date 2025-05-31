@@ -23,7 +23,7 @@ class GradCAM:
 
         # register hooks
         self.hooks.append(self.target_layer.register_forward_hook(forward_hook))
-        self.hooks.append(self.target_layer.register_backward_hook(backward_hook))
+        self.hooks.append(self.target_layer.register_full_backward_hook(backward_hook))
 
     def generate(self, input_tensor: torch.Tensor, class_idx: int = None) -> np.ndarray:
         """

@@ -6,18 +6,40 @@ from gradcam import GradCAM
 import numpy as np
 import os
 
-NUM_CLASSES = 14
+NUM_CLASSES = 15
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # --- Load model ---
 model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
-checkpoint = torch.load('models/resnet50_epoch_10.pt', map_location=device)
-model.load_state_dict(checkpoint['model_state_dict'])
+
+checkpoint = torch.load(
+    'models/resnet50_epoch_10.pt',
+    map_location=device,
+    weights_only=False
+)
+
+# load raw state dict
+raw_sd = checkpoint['model_state_dict']
+
+# fix up any fc.1 → fc name mismatches
+fixed_sd = {}
+for k, v in raw_sd.items():
+    if k.startswith('fc.1.'):
+        # drop the ".1" so it matches your new model.fc
+        new_key = k.replace('fc.1.', 'fc.')
+    else:
+        new_key = k
+    fixed_sd[new_key] = v
+
+# now load
+model.load_state_dict(fixed_sd)
+
+# model.load_state_dict(checkpoint['model_state_dict'])
 model.to(device).eval()
 
 # --- Set up GradCAM ---
-target_layer = model.layer4[-1]
+target_layer = model.layer4[-1].conv3
 grad_cam = GradCAM(model, target_layer)
 
 # --- Preprocess your image ---
