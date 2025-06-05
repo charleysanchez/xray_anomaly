@@ -1,108 +1,102 @@
+import json
 from torchvision import models, transforms
 import torch
 from PIL import Image
-import cv2
+import cv2, numpy as np
 from gradcam import GradCAM
-import numpy as np
-import os
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
-
 
 def test_gradcam(image_paths):
     NUM_CLASSES = 15
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # --- Load model ---
     model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-    model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
-
-    checkpoint = torch.load(
-        'models/resnet50_BCE_epoch_19.pt',
-        map_location=device,
-        weights_only=False
+    model.fc = torch.nn.Sequential(
+        torch.nn.Dropout(p=0.5),
+        torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
     )
-
-    # fix up any fc.1 → fc name mismatches
-    raw_sd = checkpoint['model_state_dict']
-    fixed_sd = {}
-    for k, v in raw_sd.items():
-        if k.startswith('fc.1.'):
-            new_key = k.replace('fc.1.', 'fc.')
-        else:
-            new_key = k
-        fixed_sd[new_key] = v
-
-    model.load_state_dict(fixed_sd)
+    checkpoint = torch.load('models/resnet50_best.pt', map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device).eval()
 
-    # --- Set up GradCAM ---
+    # Hook onto the last conv layer:
     target_layer = model.layer4[-1].conv3
     grad_cam = GradCAM(model, target_layer)
 
-    # --- Preprocess your image ---
     preprocess = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225])
+        transforms.Lambda(lambda x: x.repeat(3,1,1) if x.shape[0]==1 else x),
+        transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
     ])
 
+    disease_names = [
+        'Atelectasis','Cardiomegaly','Consolidation','Edema','Effusion',
+        'Emphysema','Fibrosis','Hernia','Infiltration','Mass',
+        'No Finding','Nodule','Pleural_Thickening','Pneumonia','Pneumothorax'
+    ]
+
+    # -----------------------------
+    # LOAD PER-CLASS THRESHOLDS
+    # -----------------------------
+    with open('per_class_thresholds.json', 'r') as f:
+        thresholds_dict = json.load(f)
+    # Convert to a NumPy array in the same order as disease_names:
+    thresholds = np.array([thresholds_dict[name] for name in disease_names], dtype=float)
+
+    os.makedirs('gradcam_images', exist_ok=True)
+
     for img_path in image_paths:
-        # img_path = f'data/xray_images/images_004/images/00006657_000.png'
-        img_name = os.path.basename(img_path)
         img = Image.open(img_path).convert('RGB')
+        img_name = os.path.basename(img_path)
         input_tensor = preprocess(img).unsqueeze(0).to(device)
 
-        # ensure output folder
-        os.makedirs('gradcam_images', exist_ok=True)
-
-        # --- Disease names mapping ---
-        disease_names = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Effusion', 'Emphysema', 'Fibrosis', 'Hernia', 'Infiltration', 'Mass', 'No Finding', 'Nodule', 'Pleural_Thickening', 'Pneumonia', 'Pneumothorax']
-
-        # --- Forward pass to get predicted class ---
         with torch.no_grad():
-            output = model(input_tensor)
-        pred_idx = output.argmax(dim=1).item()
-        print("="*50)
+            logits = model(input_tensor)           # raw logits [1,15]
+            probs = torch.sigmoid(logits)
+            probs = probs.cpu().numpy()[0]               # final NumPy array of length 15
 
-        print(f"\n\nImage: {img_name}\n\n")
+        # print(probs)
+        # pick all classes where prob ≥ its own threshold
+        positive_classes = [i for i,p in enumerate(probs) if p >= thresholds[i]]
+        if len(positive_classes) == 0:
+            # Fallback: if no class exceeds threshold, you could pick the highest-probability class:
+            positive_classes = [int(probs.argmax())]
 
-        disease_name = disease_names[pred_idx]
-        print(f"Predicted disease: {disease_name} (class {pred_idx})")
+        for class_idx in positive_classes:
+            cam = grad_cam.generate(input_tensor, class_idx=class_idx)
 
-        df = pd.read_csv('data/xray_images/Data_Entry_2017.csv')
-        actual_diseases = df.loc[df['Image Index'] == img_name, 'Finding Labels'].values
-        print(f"Actual diseases: {actual_diseases}")
+            if cam.max() < 1e-4:
+                print(f"Warning: almost zero GradCAM for class {class_idx} on {img_name}")
 
-        # --- Generate and visualize single-class Grad-CAM ---
-        cam = grad_cam.generate(input_tensor, class_idx=pred_idx)
+            cam_uint8 = np.uint8(255 * cam)
+            heatmap = cv2.resize(cam_uint8, (224,224), interpolation=cv2.INTER_CUBIC)
+            heatmap = heatmap.astype(np.float32) / 255.0
 
-        # Overlay parameters
-        orig = np.array(img.resize((224, 224)))
+            orig = np.array(img.resize((224,224)))
+            fig, ax = plt.subplots(figsize=(5,5))
+            ax.imshow(orig)
+            im = ax.imshow(heatmap, cmap='jet', alpha=0.5)
+            ax.axis('off')
+            ax.set_title(f"{disease_names[class_idx]} (p={probs[class_idx]:.2f}, thr={thresholds[class_idx]:.2f})")
 
-        # Resize cam to image dimensions
-        heatmap = cv2.resize(cam, (orig.shape[1], orig.shape[0]), interpolation=cv2.INTER_LINEAR)
+            save_name = f"{os.path.splitext(img_name)[0]}_{disease_names[class_idx]}.png"
+            plt.savefig(f"gradcam_images/{save_name}", bbox_inches='tight', dpi=150)
+            plt.close()
+            grad_cam.remove_hooks()
 
-        # Plot
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(orig)
-        im = ax.imshow(heatmap, cmap='jet', alpha=0.5)
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Grad-CAM Intensity')
-        ax.set_title(f"Grad-CAM for {disease_name}")
-        ax.axis('off')
+        df = pd.read_csv("data/xray_images/Data_Entry_2017.csv")
+        actual_classes = df.loc[df["Image Index"] == img_name, 'Finding Labels'].item().split('|')
+        class_probs = {c: probs[disease_names.index(c)] for c in actual_classes}
+        print(
+            f"Saved GradCAM for: {img_name} → "
+            f"predicted {[f'{disease_names[p]}: {probs[p]}' for p in positive_classes]}; "
+            f"actual {class_probs}"
+        )
 
-        # Save
-        save_path = f"gradcam_images/{os.path.splitext(img_name)[0]}_{disease_name}.png"
-        plt.savefig(save_path, bbox_inches='tight', dpi=150)
-        plt.close()
-        print(f"Saved Grad-CAM overlay with colorbar to {save_path}")
-
-        # --- Cleanup hooks ---
-        grad_cam.remove_hooks()
-        print("\n\n")
 
 
 if __name__ == '__main__':
