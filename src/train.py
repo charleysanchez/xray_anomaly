@@ -132,7 +132,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
                     "epoch": epoch + 1,
                     **metrics
                 },
-                "models/models/densenet121_best.pt"
+                "models/densenet121_best.pt"
             )
         else:
             epochs_no_improve += 1
