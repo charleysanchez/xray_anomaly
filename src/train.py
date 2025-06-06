@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+import numpy as np
 from evaluate import evaluate_model
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models, transforms
 from dataset import ChestXrayDataset
 from model import get_class_balanced_weights, DenseNet121
@@ -23,12 +24,34 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # ----------------------------
-    # DataLoaders
+    # DataLoaders (sample no finding at 30% frequency since overwhelming majority of label)
     # ----------------------------
+    no_finding_col = train_dataset.label_columns.index("No Finding")
+    label_list = []
+    for fname in train_dataset.image_names:
+        lab = train_dataset.label_dict.get(
+        fname,
+        np.zeros(NUM_CLASSES, dtype=np.float32)
+        )
+        label_list.append(lab)
+    labels_matrix = np.stack(label_list, axis=0)  # shape [N_train, num_labels]
+
+    is_no_finding = (labels_matrix[:, no_finding_col] == 1)
+    weights = np.ones(len(train_dataset), dtype=np.float32)
+    weights[is_no_finding] = 0.3   # under‐sample "No Finding" to 30% weight
+
+    sample_weights = torch.from_numpy(weights)
+    sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
+        sampler=sampler,
         num_workers=4,
         pin_memory=True,
     )
@@ -37,7 +60,7 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
         batch_size=batch_size,
         shuffle=False,
         num_workers=4,
-        pin_memory=True,
+        pin_memory=False,
     )
 
     # ----------------------------
@@ -52,17 +75,19 @@ def train_model(train_dataset, val_dataset, label_columns, num_epochs=10, batch_
     # Class-balanced weights: a tensor of shape [num_labels]
     # class_weights = get_class_balanced_weights(train_dataset).to(device)
     # criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)
-    criterion = nn.BCELoss(size_average=True)
+    criterion = nn.BCELoss(reduction='mean')
 
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=lr,
-        weight_decay=1e-5
+        weight_decay=1e-5,
+        eps=1e-8,
+        betas=(0.9, 0.999)
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
-        factor=0.5,
+        factor=0.1,
         patience=2,
     )
 
@@ -163,37 +188,14 @@ if __name__ == '__main__':
     # TRAINING TRANSFORMS (SOTA)
     # -------------------------------
     train_transform = transforms.Compose([
-        # 1) Resize the shorter side to 256, then do a random crop to 224×224.
-        transforms.RandomResizedCrop(
-            224, 
-            scale=(0.8, 1.0),   # allow up to 20% scaling down
-            ratio=(0.75, 1.33)  # small aspect‐ratio jitter
-        ),
+        # 1) Random crop to 224×224.
+        transforms.RandomResizedCrop(224),
 
         # 2) Horizontal flip with 50% probability
         transforms.RandomHorizontalFlip(p=0.5),
 
-        # 3) Small rotation (±10°)
-        transforms.RandomRotation(degrees=10, fill=0),
-
-        # 4) RandAugment: 2 random ops, magnitude 9 (you can tune these).
-        transforms.RandAugment(num_ops=2, magnitude=9),
-
-        # 5) Small ColorJitter *after* RandAugment
-        transforms.ColorJitter(brightness=0.1, contrast=0.1),
-
-        # 6) Radiograph‐specific “texture” augmentations
-        transforms.RandomEqualize(p=0.5),
-        transforms.RandomAutocontrast(p=0.5),
-
         # 7) Convert to Tensor
         transforms.ToTensor(),
-
-        # 8) If single‐channel, repeat to 3 channels
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
-
-        # 9) Random Erasing
-        transforms.RandomErasing(p=0.2, scale=(0.02, 0.1), ratio=(0.3, 3.3), value='random'),
 
         # 10) Final normalize to ImageNet statistics
         normalize,
@@ -204,10 +206,13 @@ if __name__ == '__main__':
     # -------------------------------
     val_transform = transforms.Compose([
         transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
-        normalize,
+        transforms.TenCrop(224),
+        transforms.Lambda(
+            lambda crops: torch.stack([
+                normalize(transforms.ToTensor()(crop))
+                for crop in crops
+            ])
+        ),
     ])
 
     # ----------------------------------
@@ -228,5 +233,5 @@ if __name__ == '__main__':
         num_epochs=50,
         batch_size=16,
         lr=1e-4,
-        early_stop_patience=5
+        early_stop_patience=50
     )

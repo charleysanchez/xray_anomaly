@@ -25,17 +25,40 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
     val_loss = 0.0
     all_outputs = []
     all_labels = []
+    all_losses = []
 
     with torch.no_grad():
         for batch in tqdm(dataloader, desc='Evaluating'):
-            images = batch['image'].to(device)
-            labels = batch['labels'].to(device)
+            # 1) Get the 5D input and 2D labels
+            images = batch["image"]   # [B, 10, 3, 224, 224], on CPU
+            labels = batch["labels"]  # [B, num_labels], on CPU
 
-            outputs = model(images)
-            val_loss += criterion(outputs, labels).item()
+            # Move labels to GPU
+            labels = labels.to(device)
 
-            all_outputs.append(torch.sigmoid(outputs).cpu())
+            # 2) Flatten crop dimension BEFORE sending to GPU
+            bs, ncrops, c, h, w = images.size()
+            images = images.view(bs * ncrops, c, h, w)   # [B*10, 3, 224, 224] on CPU
+            images = images.to(device)                   # now on GPU
+
+            # Forward pass on all crops at once:
+            outputs_flat = model(images)                   # [B*10, num_labels]
+
+            # Reshape so that outputs_flat → [B, 10, num_labels]:
+            _, L = outputs_flat.size()
+            outputs = outputs_flat.view(bs, ncrops, L)         # [B, 10, L]
+
+            # Now collapse the 10 predictions per image (e.g. by averaging):
+            outputs = outputs.mean(dim=1)                       # [B, L]
+
+            # Compute loss against the true labels (no cropping here):
+            loss = criterion(outputs, labels)
+            all_losses.append(loss.item())
+
+            all_outputs.append(outputs.cpu())
             all_labels.append(labels.cpu())
+
+    val_loss = np.mean(all_losses)
 
     y_pred_probs = torch.cat(all_outputs).numpy()
     y_true = torch.cat(all_labels).numpy()
@@ -74,7 +97,7 @@ def evaluate_model(model, dataloader, criterion, device, label_columns):
     overall_label_accuracy = (correct_label_predictions / total_label_predictions) * 100
 
     metrics = {
-        "val_loss": val_loss / len(dataloader),
+        "val_loss": val_loss, #/ len(dataloader),
         "mean_auroc": np.nanmean(per_class_aurocs), # Use nanmean to correctly handle NaNs
         "mean_f1_optimal_threshold": sum(per_class_f1s) / len(label_columns), # This is Macro F1
         "overall_label_accuracy_percentage": overall_label_accuracy,
